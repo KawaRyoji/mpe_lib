@@ -1,7 +1,7 @@
 import json
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Literal, Optional, Union
 
 import mido
 import numpy as np
@@ -12,13 +12,13 @@ from typing_extensions import Self, TypedDict
 from audio_processing.utils import center_frame_samples
 
 
-def filter_message(track: mido.MidiTrack, filter: List[str]) -> mido.MidiTrack:
+def filter_message(track: mido.MidiTrack, filter: list[str]) -> mido.MidiTrack:
     """
     `mido.MidiTrack`から指定したメッセージタイプでフィルタリングした`mido.MidiTrack`を返します.
 
     Args:
         track (mido.MidiTrack): フィルタリングするトラック
-        filter (List[str]): フィルタリングしたいメッセージタイプのリスト
+        filter (list[str]): フィルタリングしたいメッセージタイプのリスト
 
     Returns:
         mido.MidiTrack: フィルタリングされたトラック
@@ -51,7 +51,7 @@ class MIDIAnnotation(TypedDict):
     """ノートオンからノートオフの間に鳴っている楽器番号"""
 
 
-class MIDIAnnotations(List[MIDIAnnotation]):
+class MIDIAnnotations(list[MIDIAnnotation]):
     """
     MIDIファイルのアノテーションを扱うクラスです
     """
@@ -148,9 +148,9 @@ class MIDIAnnotations(List[MIDIAnnotation]):
 
         return annotations
 
-    def search(self, sec: float) -> Self:
+    def search_exist_notes(self, sec: float) -> Self:
         """
-        指定した秒数にあるアノテーションを返します
+        指定した秒数に存在するノートを返します
 
         Args:
             sec (float): 検索する秒数
@@ -159,13 +159,31 @@ class MIDIAnnotations(List[MIDIAnnotation]):
             ValueError: 指定した秒数が不正の場合
 
         Returns:
-            Self: 指定した秒数にあるアノテーション
+            Self: 指定した秒数に存在するノート
         """
         if sec < 0:
             raise ValueError()
 
         return MIDIAnnotations(
             filter(lambda x: x["note_on"] <= sec and x["note_off"] >= sec, self)
+        )
+
+    def search(
+        self, kind: Literal["note_on", "note_off"], sec_start: float, sec_end: float
+    ) -> Self:
+        """
+        指定した秒数にあるアノテーションを返します
+
+        Args:
+            kind (Literal[&quot;note_on&quot;, &quot;note_off&quot;]): 'note_on'または'note_off'のどちらを探すか
+            sec_start (float): 探し始めの秒数
+            sec_end (float): 探し終わりの秒数
+
+        Returns:
+            Self: 指定した秒数にあるアノテーション
+        """
+        return MIDIAnnotations(
+            filter(lambda x: x[kind] >= sec_start and x[kind] < sec_end, self)
         )
 
     def to_frames(
@@ -204,12 +222,48 @@ class MIDIAnnotations(List[MIDIAnnotation]):
 
         notes = [
             self.note_to_vector(
-                np.array([x["note_number"] for x in self.search(sample)], dtype=int)
+                np.array(
+                    [x["note_number"] for x in self.search_exist_notes(sample)],
+                    dtype=int,
+                )
             )
             for sample in center_samples / fs
         ]
 
         return np.array(notes, dtype=dtype)
+
+    def to_onset_and_offset(
+        self,
+        fs: int,
+        num_frames: int,
+        frame_shift: int,
+    ) -> tuple[np.ndarray, np.ndarray]:
+        to_note_vector = lambda kind: lambda i: self.note_to_vector(
+            np.fromiter(
+                map(
+                    lambda x: x["note_number"],
+                    self.search(
+                        kind,
+                        (i * frame_shift) / fs,
+                        ((i + 1) * frame_shift) / fs,
+                    ),
+                ),
+                dtype=int,
+            ),
+        ).reshape((1, -1))
+
+        onsets = np.concatenate(
+            list(map(to_note_vector("note_on"), range(num_frames))),
+            axis=0,
+            dtype=np.float32,
+        )
+        offsets = np.concatenate(
+            list(map(to_note_vector("note_off"), range(num_frames))),
+            axis=0,
+            dtype=np.float32,
+        )
+
+        return onsets, offsets
 
     @staticmethod
     def note_to_vector(note: np.ndarray) -> np.ndarray:
@@ -266,211 +320,3 @@ class MusicNetAnnotations(MIDIAnnotations):
                 ),
             )
         )
-
-
-class DatasetConstructor(ABC):
-    """
-    データセットを構築する処理を行う抽象クラスです. 使用には`procedure`メソッドをオーバーライドしてください.
-    """
-
-    @abstractmethod
-    def procedure(
-        self, data_path: str, annotation_path: str, **params: Any
-    ) -> Tuple[np.ndarray, np.ndarray]:
-        """
-        データへのパスとアノテーションへのパスから所望のデータ、アノテーションへの変換処理を記述する抽象メソッドです.
-
-        Args:
-            data_path (str): データへのパス
-            annotation_path (str): アノテーションへのパス
-
-        Raises:
-            NotImplementedError: 実装されていない場合
-
-        Returns:
-            Tuple[np.ndarray, np.ndarray]: データとアノテーションの組
-        """
-        raise NotImplementedError()
-
-    def construct(
-        self,
-        data_paths: List[str],
-        annotation_paths: List[str],
-        dtype=np.float32,
-        **params: Any
-    ) -> Tuple[np.ndarray, np.ndarray]:
-        """
-        `procedure`メソッドを使用して、データセットを構築します.
-
-        Args:
-            data_paths (List[str]): データへのパスのリスト
-            annotation_paths (List[str]): アノテーションへのパスのリスト
-            dtype (_type_, optional): 変換したデータとアノテーションのデータタイプ
-            params: (Dict[str, Any]): 構築する際のパラメータ
-
-        Returns:
-            Tuple[np.ndarray, np.ndarray]: 構築したデータセット
-        """
-        data: List[np.ndarray] = []
-        annotations: List[np.ndarray] = []
-
-        for i, path in enumerate(zip(data_paths, annotation_paths)):
-            print("\rnow processing...: {} / {}".format(i + 1, len(data_paths)), end="")
-            data_path, annotation_path = path
-
-            x, y = self.procedure(data_path, annotation_path, **params)
-            data.extend(x)
-            annotations.extend(y)
-        print()
-
-        data = np.array(data, dtype=dtype)
-        annotations = np.array(annotations, dtype=dtype)
-
-        return data, annotations
-
-
-class MIDIDataset(Dataset):
-    def __init__(
-        self,
-        data: np.ndarray,
-        annotations: np.ndarray,
-        params: Dict[str, Any] = {},
-    ) -> None:
-        """
-        Args:
-            data (np.ndarray): 音信号データ
-            annotations (np.ndarray): 音信号データと対となるアノテーション
-            params (Dict[str, Any], optional): データとアノテーションを生成したパラメータ
-
-        Raises:
-            ValueError: `data`と`annotations`の最初の次元が合わない場合
-        """
-        if data.shape[0] != annotations.shape[0]:
-            raise ValueError("データとアノテーションの次元は一致させてください")
-
-        super().__init__()
-
-        self.data = data
-        self.annotation = annotations
-        self.params = params
-
-    @classmethod
-    def use_constructor(
-        cls,
-        constructor: DatasetConstructor,
-        data_paths: List[str],
-        annotation_paths: List[str],
-        dtype=np.float32,
-        param_path: Optional[str] = None,
-        **params: Any
-    ) -> Self:
-        """
-        `DatasetConstructor`を使用してデータセットを構築します.
-
-        Args:
-            constructor (DatasetConstructor): `procedure`を実装したインスタンス
-            data_paths (List[str]): データへのパスのリスト
-            annotation_paths (List[str]): アノテーションへのパスのリスト
-            dtype (_type_, optional): 変換したデータとアノテーションのデータタイプ
-            param_path (Optional[str], optional): パラメータを記述したjsonファイルへのパス. ない場合`params`が使用されます.
-            params (Dict[str, Any]): 構築に使用するパラメータ
-
-        Returns:
-            Self: 構築したデータセット
-        """
-        if param_path is not None:
-            with open(param_path, "r") as f:
-                params = json.load(f)
-
-        return cls(
-            *constructor.construct(data_paths, annotation_paths, dtype=dtype, **params),
-            params
-        )
-
-    @classmethod
-    def load_from_npz(cls, npz_path: str, shuffle: bool = False) -> Self:
-        """
-        保存したnpzファイルから復元します.
-
-        Args:
-            npz_path (str): npzファイルへのパス
-            shuffle (bool, optional): 読み込みの際にシャッフルするかどうか.
-
-        Returns:
-            Self: 復元したデータセット
-        """
-        data = np.load(npz_path, allow_pickle=True)
-        x: np.ndarray = data["x"]
-        y: np.ndarray = data["y"]
-
-        if shuffle:
-            indices = np.arange(x.shape[0])
-            np.random.shuffle(indices)
-            x = x[indices]
-            y = y[indices]
-
-        return cls(x, y)
-
-    def to_dataloader(
-        self, batch_size: int, shuffle: bool, num_workers: int = 0, **kwargs: Any
-    ) -> DataLoader:
-        """
-        このデータセットをpytorchの`DataLoader`へ変換します.
-
-        Args:
-            batch_size (int): バッチサイズ
-            shuffle (bool): シャッフルするかどうか
-            num_workers (int, optional): ワーカー数
-            kwargs (Dict[str, Any]): `DataLoader`のパラメータ
-
-        Returns:
-            DataLoader: _description_
-        """
-        return DataLoader(
-            self,
-            batch_size=batch_size,
-            shuffle=shuffle,
-            num_workers=num_workers,
-            **kwargs
-        )
-
-    def save_parameter(self, path: Union[str, Path]) -> None:
-        """
-        このデータセットを生成したパラメータを保存します.
-
-        Args:
-            path (Union[str, Path]): 保存先のパス (json形式)
-        """
-        with open(path, "w") as f:
-            json.dump(self.params, f)
-
-    def save_to_npz(
-        self, path: str, compress: bool = False, save_params: bool = True
-    ) -> None:
-        """
-        データセットをnpzファイルに保存します.
-
-        Args:
-            path (str): 保存先のパス
-            compress (bool, optional): 圧縮するかどうか
-            save_params (bool, optional): 生成したパラメータを保存するかどうか
-        """
-        if path.endswith(".npz"):
-            path = path[:-4]
-
-        directory = Path(path).parent
-        Path.mkdir(directory, parents=True, exist_ok=True)
-
-        if save_params:
-            self.save_parameter(directory / (Path(path).name + ".json"))
-
-        if compress:
-            np.savez_compressed(path, x=self.data, y=self.annotation)
-        else:
-            np.savez(path, x=self.data, y=self.annotation)
-
-    def __len__(self) -> int:
-        return self.data.shape[0]
-
-    def __getitem__(self, index: int) -> Tuple[np.ndarray, np.ndarray]:
-        return self.data[index], self.annotation[index]

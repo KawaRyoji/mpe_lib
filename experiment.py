@@ -218,21 +218,27 @@ class Experiment:
             os.path.join(self.root_dir, "average.csv")
         )
 
-    def suggestion_parameter(self, trial: optuna.Trial, model_param: Dict[str, Any]):
-        optimizer_params = model_param["optimizer_params"]
-        optimizer_params.update(lr=trial.suggest_float("lr", 1e-6, 1e-3, log=True))
-        model_param.update(
-            dropout=trial.suggest_float("dropout", 0.2, 0.6),
-            norm_weight=trial.suggest_float("norm_weight", 1e-7, 1e-3),
-            optimizer_params=optimizer_params,
-        )
-        return model_param
+    @abstractmethod
+    def suggestion_parameter(self, trial: optuna.Trial) -> dict[str, Any]:
+        """
+        optunaでチューニングするパラメータを定義するメソッドです.
+        チューニングするパラメータは`trial.suggest_*`で定義してください.
+
+        Args:
+            trial (optuna.Trial): optunaのトライアル
+
+        Raises:
+            NotImplementedError: このメソッドがオーバーライドされてない場合
+
+        Returns:
+            dict[str, Any]: 定義したパラメータ
+        """
+        raise NotImplementedError()
 
     def create_objective_func(
         self,
         model_type: Type[LightningModule],
         data_module: LightningDataModule,
-        model_params: Dict[str, Any],
         tune_monitor: Optional[str] = None,
     ) -> Callable[[optuna.trial.Trial], float]:
         """
@@ -241,7 +247,6 @@ class Experiment:
         Args:
             model_type (Type[LightningModule]): モデルのタイプ
             data_module (LightningDataModule): 学習に使用する`LigtningDataModule`
-            model_params (Dict[str, Any]): モデルパラメータ. suggestion_parameterでoptunaの探索空間の定義に使用します.
             tune_monitor (Optional[str], optional): 最適化するメトリクス. `None`の場合, 学習の際に監視するメトリクスと同じになります
 
         Returns:
@@ -250,7 +255,7 @@ class Experiment:
 
         def objective(trial: optuna.trial.Trial) -> float:
             trial_dir = os.path.join(self.root_dir, "optuna", f"trial{trial.number}")
-            model = model_type(**self.suggestion_parameter(trial, model_params))
+            model = model_type(**self.suggestion_parameter(trial))
 
             trainer = Trainer(
                 default_root_dir=trial_dir, **self.trainer_args(trial_dir, self.monitor)
@@ -274,7 +279,6 @@ class Experiment:
         self,
         model_type: Type[LightningModule],
         data_module: LightningDataModule,
-        model_params: Callable[[optuna.Study], Dict[str, Any]],
         tune_monitor: Optional[str] = None,
         trials: int = 20,
         direction: str = "maximize",
@@ -288,7 +292,6 @@ class Experiment:
         Args:
             model_type (Type[LightningModule]): モデルのタイプ
             data_module (LightningDataModule): 学習に使用する`LigtningDataModule`
-            model_params (Dict[str, Any]): optunaのsuggestionを含むモデルパラメータを作る関数
             tune_monitor (Optional[str], optional): 最適化するメトリクス. `None`の場合, 学習の際に監視するメトリクスと同じになります
             trials (int, optional): 試行回数
             direction (str, optional): 最適化する方向
@@ -301,7 +304,6 @@ class Experiment:
         objective = self.create_objective_func(
             model_type=model_type,
             data_module=data_module,
-            model_params=model_params,
             tune_monitor=tune_monitor,
         )
 
