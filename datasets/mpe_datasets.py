@@ -1,10 +1,17 @@
-import os
+import abc
 from pathlib import Path
-from typing import Iterable
+from typing import Callable, Iterable
 
 import numpy as np
 from torch.utils.data import ConcatDataset, Dataset
-from typing_extensions import Self
+from typing_extensions import Self, override
+
+
+class NPZConcatDataset(ConcatDataset, metaclass=abc.ABCMeta):
+    @classmethod
+    @abc.abstractmethod
+    def from_npz(cls, paths: list[str]) -> Self:
+        raise NotImplementedError()
 
 
 class N1MPEDatasetOnMemory(Dataset):
@@ -39,7 +46,20 @@ class N1MPEDatasetOnMemory(Dataset):
 
         return cls(file["x"], file["y"], file["context_frame"])
 
+    @classmethod
+    def construct(
+        cls,
+        data_path: str,
+        label_path: str,
+        context_frame: int,
+        constructor: Callable[[str, str], tuple[np.ndarray, np.ndarray]],
+    ) -> Self:
+        data, label = constructor(data_path, label_path)
+        return cls(data, label, context_frame)
+
     def save_to_npz(self, path: str, compress: bool = False) -> None:
+        Path(path).parent.mkdir(parents=True, exist_ok=True)
+
         if compress:
             np.savez_compressed(
                 path, x=self.data, y=self.label, context_frame=self.context_frame
@@ -57,7 +77,7 @@ class N1MPEDatasetOnMemory(Dataset):
         return data, label
 
 
-class N1MPEConcatDatasetOnMemory(ConcatDataset):
+class N1MPEConcatDatasetOnMemory(NPZConcatDataset):
     def __init__(self, datasets: Iterable[N1MPEDatasetOnMemory]) -> None:
         assert all(
             map(lambda dataset: isinstance(dataset, N1MPEDatasetOnMemory), datasets)
@@ -65,23 +85,28 @@ class N1MPEConcatDatasetOnMemory(ConcatDataset):
         super().__init__(datasets)
 
     @classmethod
-    def from_npz(cls, root_dir_path: str) -> Self:
+    @override
+    def from_npz(cls, paths: list[str]) -> Self:
+        return cls(list(map(lambda path: N1MPEDatasetOnMemory.from_npz(path), paths)))
+
+    @classmethod
+    def construct(
+        cls,
+        data_paths: list[str],
+        label_paths: list[str],
+        context_frame: int,
+        procedure: Callable[[str, str], tuple[np.ndarray, np.ndarray]],
+    ) -> Self:
         return cls(
-            map(
-                lambda path: N1MPEDatasetOnMemory.from_npz(path),
-                os.listdir(root_dir_path),
+            list(
+                map(
+                    lambda path: N1MPEDatasetOnMemory.construct(
+                        *path, context_frame, procedure
+                    ),
+                    zip(data_paths, label_paths),
+                )
             )
         )
-
-    def save_to_npz(self, root_dir_path: str, compress: bool = False) -> None:
-        root_dir = Path(root_dir_path)
-        root_dir.mkdir(parents=True, exist_ok=True)
-
-        for i, dataset in enumerate(self.datasets):
-            if not isinstance(dataset, N1MPEDatasetOnMemory):
-                raise TypeError()
-
-            dataset.save_to_npz(root_dir / str(i), compress=compress)
 
 
 class NNMPEDatasetOnMemory(Dataset):
@@ -103,7 +128,9 @@ class NNMPEDatasetOnMemory(Dataset):
         super().__init__()
 
         # データの時間長とラベルの時間長は等しくなる
-        assert data.shape[0] == label.shape[0]
+        assert (
+            data.shape[0] == label.shape[0]
+        ), "data shape: {}, label shape: {}".format(data.shape, label.shape)
 
         self.data = data
         self.label = label
@@ -115,7 +142,20 @@ class NNMPEDatasetOnMemory(Dataset):
 
         return cls(file["x"], file["y"], file["frames"])
 
+    @classmethod
+    def construct(
+        cls,
+        data_path: str,
+        label_path: str,
+        frames: int,
+        procedure: Callable[[str, str], tuple[np.ndarray, np.ndarray]],
+    ) -> Self:
+        data, label = procedure(data_path, label_path)
+        return cls(data, label, frames)
+
     def save_to_npz(self, path: str, compress: bool = False) -> None:
+        Path(path).parent.mkdir(parents=True, exist_ok=True)
+
         if compress:
             np.savez_compressed(path, x=self.data, y=self.label, frames=self.frames)
         else:
@@ -131,7 +171,7 @@ class NNMPEDatasetOnMemory(Dataset):
         return data, label
 
 
-class NNMPEConcatDatasetOnMemory(ConcatDataset):
+class NNMPEConcatDatasetOnMemory(NPZConcatDataset):
     def __init__(self, datasets: Iterable[NNMPEDatasetOnMemory]) -> None:
         assert all(
             map(lambda dataset: isinstance(dataset, NNMPEDatasetOnMemory), datasets)
@@ -139,20 +179,25 @@ class NNMPEConcatDatasetOnMemory(ConcatDataset):
         super().__init__(datasets)
 
     @classmethod
-    def from_npz(cls, root_dir_path: str) -> Self:
+    @override
+    def from_npz(cls, paths: list[str]) -> Self:
+        return cls(list(map(lambda path: NNMPEDatasetOnMemory.from_npz(path), paths)))
+
+    @classmethod
+    def construct(
+        cls,
+        data_paths: list[str],
+        label_paths: list[str],
+        frames: int,
+        procedure: Callable[[str, str], tuple[np.ndarray, np.ndarray]],
+    ) -> Self:
         return cls(
-            map(
-                lambda path: NNMPEDatasetOnMemory.from_npz(path),
-                os.listdir(root_dir_path),
+            list(
+                map(
+                    lambda path: N1MPEDatasetOnMemory.construct(
+                        *path, frames, procedure
+                    ),
+                    zip(data_paths, label_paths),
+                )
             )
         )
-
-    def save_to_npz(self, root_dir_path: str, compress: bool = False) -> None:
-        root_dir = Path(root_dir_path)
-        root_dir.mkdir(parents=True, exist_ok=True)
-
-        for i, dataset in enumerate(self.datasets):
-            if not isinstance(dataset, NNMPEDatasetOnMemory):
-                raise TypeError()
-
-            dataset.save_to_npz(root_dir / str(i), compress=compress)
