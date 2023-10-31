@@ -127,6 +127,18 @@ class MIDIAnnotations(list[MIDIAnnotation]):
     def from_numpy(
         cls, notes: np.ndarray, fs: int, frame_shift: int, instrument: int = 0
     ) -> Self:
+        """
+        numpy配列からMIDIAnnotationsを生成します
+
+        Args:
+            notes (np.ndarray): 音高の配列
+            fs (int): サンプリング周波数
+            frame_shift (int): シフト長
+            instrument (int, optional): MIDI楽器番号
+
+        Returns:
+            Self: 生成したMIDIAnnotations
+        """
         messages = notes_to_span(
             notes,
             lambda note_on, note_off, note_num: MIDIAnnotation(
@@ -238,6 +250,17 @@ class MIDIAnnotations(list[MIDIAnnotation]):
         num_frames: int,
         frame_shift: int,
     ) -> tuple[np.ndarray, np.ndarray]:
+        """
+        音高のオンセットとオフセットをnumpy配列に変換します
+
+        Args:
+            fs (int): サンプリング周波数
+            num_frames (int): 変換するフレーム数
+            frame_shift (int): シフト長
+
+        Returns:
+            tuple[np.ndarray, np.ndarray]: オンセット配列, オフセット配列
+        """
         to_note_vector = lambda kind: lambda i: self.note_to_vector(
             np.fromiter(
                 map(
@@ -354,6 +377,21 @@ def numpy_to_track(
     tempo: int = 500000,
     ticks_per_beat: int = 480,
 ) -> mido.MidiTrack:
+    """
+    numpy配列で格納された音高をmidoのトラック形式にします
+
+    Args:
+        notes (np.ndarray): 音高のnumpy配列
+        fs (float): サンプリング周波数
+        frame_shift (int): フレームシフト長
+        velocity (int, optional): ベロシティ(0-127)
+        instrument (int, optional): MIDI楽器番号(0-127)
+        tempo (int, optional): MIDIのテンポ情報
+        ticks_per_beat (int, optional): midoのticks_per_beat
+
+    Returns:
+        mido.MidiTrack: 生成したトラック
+    """
     import itertools
 
     messages = notes_to_span(
@@ -415,22 +453,54 @@ def _to_rel_time(messages: list[mido.Message]) -> Generator[mido.Message, None, 
 
 
 class SimpleSynthesizer:
+    """
+    MIDIAnnotationsからサイン波で音を合成するクラス
+    """
+
     def __init__(self, fs: int) -> None:
+        """
+        Args:
+            fs (int): サンプリング周波数
+        """
         self.__fs = fs
 
     @property
     def fs(self) -> int:
+        """
+        サンプリング周波数
+        """
         return self.__fs
 
     def sine_wave(
         self, frequency: float, amplitude: float, duration: float
     ) -> np.ndarray:
+        """
+        サイン波を生成します
+
+        Args:
+            frequency (float): 周波数
+            amplitude (float): 振幅
+            duration (float): 継続長
+
+        Returns:
+            np.ndarray: 生成したサイン波
+        """
         duration_point = int(self.fs * duration)
         t = np.arange(duration_point)
 
         return amplitude * np.sin(2 * np.pi * t * frequency / self.fs)
 
     def apply_fade(self, signal: np.ndarray, fade_time: float) -> np.ndarray:
+        """
+        信号の始めと終わりにフェードをかけます
+
+        Args:
+            signal (np.ndarray): フェードをかける信号
+            fade_time (float): フェードの長さ(sec)
+
+        Returns:
+            np.ndarray: フェードをかけた信号
+        """
         fade_point = int(fade_time * self.fs)
         t = np.arange(fade_point)
         func = np.ones(len(signal))
@@ -443,6 +513,17 @@ class SimpleSynthesizer:
     def synth(
         self, score: MIDIAnnotations, master_volume: float, fade_time: float = 0.01
     ) -> np.ndarray:
+        """
+        MIDIAnnotationsからサイン波で音を合成します
+
+        Args:
+            score (MIDIAnnotations): 楽譜
+            master_volume (float): マスターボリューム
+            fade_time (float, optional): フェードの長さ
+
+        Returns:
+            np.ndarray: 合成した音
+        """
         to_point = lambda x: int(x * self.fs)
 
         time_length = score.length()

@@ -5,11 +5,21 @@ import numpy as np
 import pandas as pd
 
 from audio_processing import Audio
-from mpe_lib.datasets.midi import MIDIAnnotations
+
+from ..midi import MIDIAnnotations
 
 
 class MAESTRO:
+    """
+    MAESTROデータセットの楽曲, ラベルのパスを保存するクラス
+    """
+
     def __init__(self, root_dir: str, version: int = 3) -> None:
+        """
+        Args:
+            root_dir (str): MAESTROのルートディレクトリ
+            version (int, optional): MAESTROのバージョン
+        """
         meta_data = pd.read_csv(
             os.path.join(root_dir, "maestro-v{}.0.0.csv".format(version))
         )
@@ -85,9 +95,19 @@ class MAESTRO:
 
 
 class MAESTRONPZ:
+    """
+    MAESTROデータセットのnpzファイル用クラス
+    """
+
     def __init__(
         self, train_data_dir: str, valid_data_dir: str, test_data_dir: str
     ) -> None:
+        """
+        Args:
+            train_data_dir (str): 学習用データのディレクトリ
+            valid_data_dir (str): 検証用データのディレクトリ
+            test_data_dir (str): テスト用データのディレクトリ
+        """
         self.train_paths = list(
             filter(
                 lambda path: os.path.splitext(path)[1] == ".npz",

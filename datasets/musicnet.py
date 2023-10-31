@@ -10,6 +10,10 @@ from ..midi import MIDIAnnotation, MIDIAnnotations
 
 
 class MusicNet:
+    """
+    MusicNetデータセットの楽曲, ラベルのパスを保存するクラス
+    """
+
     def __init__(self, root_dir: str) -> None:
         """
         Args:
@@ -49,18 +53,30 @@ class MusicNet:
 
     @property
     def train_data_paths(self) -> list[str]:
+        """
+        学習用データのパスのリスト
+        """
         return self.__train_data_paths
 
     @property
     def train_label_paths(self) -> list[str]:
+        """
+        学習用ラベルのパスのリスト
+        """
         return self.__train_label_paths
 
     @property
     def test_data_paths(self) -> list[str]:
+        """
+        テスト用データのパスのリスト
+        """
         return self.__test_data_paths
 
     @property
     def test_label_paths(self) -> list[str]:
+        """
+        テスト用ラベルのパスのリスト
+        """
         return self.__test_label_paths
 
     def split(
@@ -121,11 +137,25 @@ class MusicNet:
 
     @staticmethod
     def path_to_id(path: str) -> int:
+        """
+        パスからMusicNetの楽曲番号を抽出します
+
+        Args:
+            path (str): 抽出するパス
+
+        Returns:
+            int: MusicNetの楽曲番号
+        """
         return int(os.path.basename(path)[: -len(os.path.splitext(path)[1])])
 
 
 class MusicNetNPZ:
     def __init__(self, train_set_dir: str, test_set_dir: str) -> None:
+        """
+        Args:
+            train_set_dir (str): 学習用データのルートディレクトリ
+            test_set_dir (str): テスト用データのルートディレクトリ
+        """
         self.train_paths = list(
             map(
                 lambda path: os.path.join(train_set_dir, path),
