@@ -288,6 +288,53 @@ class MIDIAnnotations(list[MIDIAnnotation]):
 
         return onsets, offsets
 
+    def synth(
+        self, fs: int, master_volume: float, fade_time: float = 0.01
+    ) -> np.ndarray:
+        """
+        サイン波で音を合成します
+
+        Args:
+            fs (int): サンプリング周波数
+            master_volume (float): マスターボリューム
+            fade_time (float, optional): フェードの長さ
+
+        Returns:
+            np.ndarray: 合成した音
+        """
+        to_point = lambda x: int(x * fs)
+
+        time_length = self.length()
+        time_length_point = to_point(time_length)
+
+        buffer = np.zeros(time_length_point)
+
+        synthetic_sound = reduce(
+            lambda buf, m: buf
+            + np.pad(  # bufferと同じ長さになるようにsin波をパディングする
+                _apply_fade(
+                    fs,
+                    _sine_wave(
+                        fs,
+                        librosa.midi_to_hz(m["note_number"]),  # frequency
+                        1.0,  # amplitude
+                        m["note_off"] - m["note_on"],  # duration
+                    ),
+                    fade_time,
+                ),
+                (
+                    to_point(m["note_on"]),  # offset
+                    time_length_point
+                    - to_point(m["note_on"])
+                    - to_point(m["note_off"] - m["note_on"]),
+                ),
+            ),
+            self,
+            buffer,
+        )
+
+        return synthetic_sound / np.max(np.abs(synthetic_sound)) * master_volume
+
     @staticmethod
     def note_to_vector(note: np.ndarray) -> np.ndarray:
         """
@@ -452,105 +499,44 @@ def _to_rel_time(messages: list[mido.Message]) -> Generator[mido.Message, None, 
         current = msg.time
 
 
-class SimpleSynthesizer:
+def _sine_wave(
+    fs: int, frequency: float, amplitude: float, duration: float
+) -> np.ndarray:
     """
-    MIDIAnnotationsからサイン波で音を合成するクラス
+    サイン波を生成します
+
+    Args:
+        fs (int): サンプリング周波数
+        frequency (float): 周波数
+        amplitude (float): 振幅
+        duration (float): 継続長
+
+    Returns:
+        np.ndarray: 生成したサイン波
     """
+    duration_point = int(fs * duration)
+    t = np.arange(duration_point)
 
-    def __init__(self, fs: int) -> None:
-        """
-        Args:
-            fs (int): サンプリング周波数
-        """
-        self.__fs = fs
+    return amplitude * np.sin(2 * np.pi * t * frequency / fs)
 
-    @property
-    def fs(self) -> int:
-        """
-        サンプリング周波数
-        """
-        return self.__fs
 
-    def sine_wave(
-        self, frequency: float, amplitude: float, duration: float
-    ) -> np.ndarray:
-        """
-        サイン波を生成します
+def _apply_fade(fs: int, signal: np.ndarray, fade_time: float) -> np.ndarray:
+    """
+    信号の始めと終わりにフェードをかけます
 
-        Args:
-            frequency (float): 周波数
-            amplitude (float): 振幅
-            duration (float): 継続長
+    Args:
+        fs (int): サンプリング周波数
+        signal (np.ndarray): フェードをかける信号
+        fade_time (float): フェードの長さ(sec)
 
-        Returns:
-            np.ndarray: 生成したサイン波
-        """
-        duration_point = int(self.fs * duration)
-        t = np.arange(duration_point)
+    Returns:
+        np.ndarray: フェードをかけた信号
+    """
+    fade_point = int(fade_time * fs)
+    t = np.arange(fade_point)
+    func = np.ones(len(signal))
 
-        return amplitude * np.sin(2 * np.pi * t * frequency / self.fs)
+    func[:fade_point] = 1 / fade_point * t
+    func[-fade_point:] = -1 / fade_point * t + 1
 
-    def apply_fade(self, signal: np.ndarray, fade_time: float) -> np.ndarray:
-        """
-        信号の始めと終わりにフェードをかけます
-
-        Args:
-            signal (np.ndarray): フェードをかける信号
-            fade_time (float): フェードの長さ(sec)
-
-        Returns:
-            np.ndarray: フェードをかけた信号
-        """
-        fade_point = int(fade_time * self.fs)
-        t = np.arange(fade_point)
-        func = np.ones(len(signal))
-
-        func[:fade_point] = 1 / fade_point * t
-        func[-fade_point:] = -1 / fade_point * t + 1
-
-        return signal * func
-
-    def synth(
-        self, score: MIDIAnnotations, master_volume: float, fade_time: float = 0.01
-    ) -> np.ndarray:
-        """
-        MIDIAnnotationsからサイン波で音を合成します
-
-        Args:
-            score (MIDIAnnotations): 楽譜
-            master_volume (float): マスターボリューム
-            fade_time (float, optional): フェードの長さ
-
-        Returns:
-            np.ndarray: 合成した音
-        """
-        to_point = lambda x: int(x * self.fs)
-
-        time_length = score.length()
-        time_length_point = to_point(time_length)
-
-        buffer = np.zeros(time_length_point)
-
-        synthetic_sound = reduce(
-            lambda buf, m: buf
-            + np.pad(  # bufferと同じ長さになるようにsin波をパディングする
-                self.apply_fade(
-                    self.sine_wave(
-                        librosa.midi_to_hz(m["note_number"]),  # frequency
-                        1.0,  # amplitude
-                        m["note_off"] - m["note_on"],  # duration
-                    ),
-                    fade_time,
-                ),
-                (
-                    to_point(m["note_on"]),  # offset
-                    time_length_point
-                    - to_point(m["note_on"])
-                    - to_point(m["note_off"] - m["note_on"]),
-                ),
-            ),
-            score,
-            buffer,
-        )
-
-        return synthetic_sound / np.max(np.abs(synthetic_sound)) * master_volume
+    return signal * func
