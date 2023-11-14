@@ -6,8 +6,6 @@ import mido
 import numpy as np
 from typing_extensions import Self, TypedDict
 
-from audio_processing.utils import center_frame_samples
-
 _T = TypeVar("_T")
 
 
@@ -153,12 +151,35 @@ class MIDIAnnotations(list[MIDIAnnotation]):
 
     def length(self) -> float:
         """
-        MIDIの演奏時間を取得します
+        MIDIの演奏時間 (sec)を取得します.
 
         Returns:
-            float: 演奏時間
+            float: 演奏時間 (sec)
         """
         return max(map(lambda m: m["note_off"], self))
+
+    def instruments(self) -> list[int]:
+        """
+        このアノテーションに含まれる楽器を楽器番号のリストで返します.
+
+        Returns:
+            list[int]: このアノテーションに含まれる楽器の楽器番号のリスト
+        """
+        return list(set(map(lambda x: x["instrument"], self)))
+
+    def filter_instrument(self, instrument_number: int) -> Self:
+        """
+        指定した楽器番号でこのアノテーションをフィルタリングします.
+
+        Args:
+            instrument_number (int): フィルタリングする楽器番号
+
+        Returns:
+            Self: フィルタリングしたアノテーション
+        """
+        return MIDIAnnotations(
+            filter(lambda x: x["instrument"] == instrument_number, self)
+        )
 
     def search_exist_notes(self, sec: float) -> Self:
         """
@@ -171,7 +192,7 @@ class MIDIAnnotations(list[MIDIAnnotation]):
             ValueError: 指定した秒数が不正の場合
 
         Returns:
-            Self: 指定した秒数に存在するノート
+            Self: 指定した秒数に存在するアノテーション
         """
         if sec < 0:
             raise ValueError()
@@ -351,6 +372,18 @@ class MIDIAnnotations(list[MIDIAnnotation]):
         vector = vector.astype(np.float32)
 
         return vector
+
+
+def center_frame_samples(
+    num_frames: int, frame_length: int, frame_shift: int, offset: int = 0
+) -> np.ndarray:
+    return np.fromiter(
+        map(
+            lambda i: (2 * i * frame_shift + frame_length) // 2 + offset,
+            range(num_frames),
+        ),
+        int,
+    )
 
 
 def filter_message(track: mido.MidiTrack, filter: list[str]) -> mido.MidiTrack:
