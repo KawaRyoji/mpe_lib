@@ -215,9 +215,6 @@ class HoldOutExperiment(Experiment):
         このメソッドに渡される引数は`data_module_args`で定義したパラメータです.
         オーバーライドして使用してください.
 
-        Args:
-            data_module_args (dict[str, Any]): データセットのパラメータ. `data_module_args`で設定した値となります.
-
         Returns:
             LightningDataModule: 生成したデータセット
         """
@@ -339,16 +336,11 @@ class OptunaExperiment(Experiment):
         raise NotImplementedError()
 
     @abstractmethod
-    def define_data_module(
-        self, data_module_args: dict[str, Any]
-    ) -> LightningDataModule:
+    def define_data_module(self, *args: Any, **kwargs: Any) -> LightningDataModule:
         """
         データセットを定義し, 生成します.
         このメソッドに渡される引数は`data_module_args`で定義したパラメータです.
         オーバーライドして使用してください.
-
-        Args:
-            data_module_args (dict[str, Any]): データセットのパラメータ. `data_module_args`で設定した値となります.
 
         Returns:
             LightningDataModule: 生成したデータセット
@@ -400,10 +392,10 @@ class OptunaExperiment(Experiment):
         """
 
         def objective(trial: optuna.trial.Trial) -> float:
-            trial_dir = os.path.join(self.root_dir, "optuna", f"trial{trial.number}")
+            trial_dir = os.path.join(self.root_dir, f"trial{trial.number}")
             model = model_type(**self.suggestion_parameter(trial))
 
-            trainer = self.create_trainer(trial_dir, monitor)
+            trainer = self.create_trainer(trial_dir, self.monitor)
             trainer.fit(model, data_module)
             trainer.test(
                 model=model,
@@ -414,7 +406,6 @@ class OptunaExperiment(Experiment):
             )
 
             monitor = self.monitor if tune_monitor is None else tune_monitor
-
             return trainer.callback_metrics[monitor].item()
 
         return objective
