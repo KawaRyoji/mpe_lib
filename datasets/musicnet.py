@@ -231,7 +231,7 @@ class MusicNetAnnotations(MIDIAnnotations):
                 lambda x: MIDIAnnotation(
                     note_on=x[0] / fs,
                     note_off=x[1] / fs,
-                    instrument=x[2],
+                    instrument=x[2] - 1,  # 1始まりで番号付けされてるため-1
                     note_number=x[3],
                 ),
                 zip(

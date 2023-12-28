@@ -89,7 +89,9 @@ class MIDIAnnotations(list[MIDIAnnotation]):
                     filter(
                         lambda x: x[1]["type"] == "note_on"
                         and x[1]["note"] == message["note"]
-                        or x[1] is track[-1],
+                        or x[1] is track[-1]
+                        or x[1]["type"] == "note_off"
+                        and x[1]["note"] == message["note"],
                         enumerate(track[i + 1 :]),
                     )
                 )
