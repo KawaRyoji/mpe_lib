@@ -299,7 +299,7 @@ if __name__ == "__main__":
 
     import librosa
 
-    from .mpe_datasets import NNMPEDatasetOnMemory
+    from .mpe_datasets import NNMPEDataset
 
     cqt_parameters = {
         "frame_shift": 256,
@@ -347,7 +347,7 @@ if __name__ == "__main__":
             continue
 
         print("processing {}, {}".format(train_data_path, train_label_path))
-        dataset = NNMPEDatasetOnMemory.construct(
+        dataset = NNMPEDataset.construct(
             train_data_path, train_label_path, frames, procedure
         )
         dataset.save_to_npz(save_file_path)
@@ -370,7 +370,7 @@ if __name__ == "__main__":
             continue
 
         print("processing {}, {}".format(test_data_path, test_label_path))
-        dataset = NNMPEDatasetOnMemory.construct(
+        dataset = NNMPEDataset.construct(
             test_data_path, test_label_path, frames, procedure
         )
         dataset.save_to_npz(save_file_path)

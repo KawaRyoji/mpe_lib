@@ -14,7 +14,7 @@ class NPZConcatDataset(ConcatDataset, metaclass=abc.ABCMeta):
         raise NotImplementedError()
 
 
-class N1MPEDatasetOnMemory(Dataset):
+class N1MPEDataset(Dataset):
     """
     Multi-Pitch Estimation 用のオンメモリデータセット.
     このデータセットはスペクトログラムの中心1フレームの音高推定を行うためのN対1データセットです.
@@ -77,17 +77,15 @@ class N1MPEDatasetOnMemory(Dataset):
         return data, label
 
 
-class N1MPEConcatDatasetOnMemory(NPZConcatDataset):
-    def __init__(self, datasets: Iterable[N1MPEDatasetOnMemory]) -> None:
-        assert all(
-            map(lambda dataset: isinstance(dataset, N1MPEDatasetOnMemory), datasets)
-        )
+class N1MPEConcatDataset(NPZConcatDataset):
+    def __init__(self, datasets: Iterable[N1MPEDataset]) -> None:
+        assert all(map(lambda dataset: isinstance(dataset, N1MPEDataset), datasets))
         super().__init__(datasets)
 
     @classmethod
     @override
     def from_npz(cls, paths: list[str]) -> Self:
-        return cls(list(map(lambda path: N1MPEDatasetOnMemory.from_npz(path), paths)))
+        return cls(list(map(lambda path: N1MPEDataset.from_npz(path), paths)))
 
     @classmethod
     def construct(
@@ -100,7 +98,7 @@ class N1MPEConcatDatasetOnMemory(NPZConcatDataset):
         return cls(
             list(
                 map(
-                    lambda path: N1MPEDatasetOnMemory.construct(
+                    lambda path: N1MPEDataset.construct(
                         *path, context_frame, procedure
                     ),
                     zip(data_paths, label_paths),
@@ -109,7 +107,7 @@ class N1MPEConcatDatasetOnMemory(NPZConcatDataset):
         )
 
 
-class NNMPEDatasetOnMemory(Dataset):
+class NNMPEDataset(Dataset):
     """
     Multi-Pitch Estimation 用のオンメモリデータセット.
     このデータセットはスペクトログラムのフレーム数分音高推定を行うためのN対Nデータセットです.
@@ -171,17 +169,15 @@ class NNMPEDatasetOnMemory(Dataset):
         return data, label
 
 
-class NNMPEConcatDatasetOnMemory(NPZConcatDataset):
-    def __init__(self, datasets: Iterable[NNMPEDatasetOnMemory]) -> None:
-        assert all(
-            map(lambda dataset: isinstance(dataset, NNMPEDatasetOnMemory), datasets)
-        )
+class NNMPEConcatDataset(NPZConcatDataset):
+    def __init__(self, datasets: Iterable[NNMPEDataset]) -> None:
+        assert all(map(lambda dataset: isinstance(dataset, NNMPEDataset), datasets))
         super().__init__(datasets)
 
     @classmethod
     @override
     def from_npz(cls, paths: list[str]) -> Self:
-        return cls(list(map(lambda path: NNMPEDatasetOnMemory.from_npz(path), paths)))
+        return cls(list(map(lambda path: NNMPEDataset.from_npz(path), paths)))
 
     @classmethod
     def construct(
@@ -194,9 +190,7 @@ class NNMPEConcatDatasetOnMemory(NPZConcatDataset):
         return cls(
             list(
                 map(
-                    lambda path: N1MPEDatasetOnMemory.construct(
-                        *path, frames, procedure
-                    ),
+                    lambda path: N1MPEDataset.construct(*path, frames, procedure),
                     zip(data_paths, label_paths),
                 )
             )

@@ -81,7 +81,9 @@ class MIDIAnnotations(list[MIDIAnnotation]):
                 # ここでは note_on に着目し, note_onであれば
                 # その音高の次のnote_onを探して, note_offとする
 
-                if message["velocity"] == 0:  # velocity = 0 は note_off を表すためスキップ
+                if (
+                    message["velocity"] == 0
+                ):  # velocity = 0 は note_off を表すためスキップ
                     continue
 
                 # 次に出現する同じ音高のメッセージがnote_offになる
@@ -169,6 +171,18 @@ class MIDIAnnotations(list[MIDIAnnotation]):
         """
         return list(set(map(lambda x: x["instrument"], self)))
 
+    def filter(self, func: Callable[[MIDIAnnotation], bool]) -> Self:
+        """
+        指定したフィルタでこのアノテーションをフィルタリングします
+
+        Args:
+            func (Callable[[Self], bool]): フィルタ
+
+        Returns:
+            Self: フィルタリングされたアノテーション
+        """
+        return MIDIAnnotations(filter(func, self))
+
     def filter_instrument(self, instrument_number: int) -> Self:
         """
         指定した楽器番号でこのアノテーションをフィルタリングします.
@@ -179,9 +193,7 @@ class MIDIAnnotations(list[MIDIAnnotation]):
         Returns:
             Self: フィルタリングしたアノテーション
         """
-        return MIDIAnnotations(
-            filter(lambda x: x["instrument"] == instrument_number, self)
-        )
+        return self.filter(lambda x: x["instrument"] == instrument_number)
 
     def search_exist_notes(self, sec: float) -> Self:
         """
@@ -196,12 +208,7 @@ class MIDIAnnotations(list[MIDIAnnotation]):
         Returns:
             Self: 指定した秒数に存在するアノテーション
         """
-        if sec < 0:
-            raise ValueError()
-
-        return MIDIAnnotations(
-            filter(lambda x: x["note_on"] <= sec and x["note_off"] >= sec, self)
-        )
+        return self.filter(lambda x: x["note_on"] <= sec and x["note_off"] >= sec)
 
     def search(
         self, kind: Literal["note_on", "note_off"], sec_start: float, sec_end: float
@@ -217,9 +224,7 @@ class MIDIAnnotations(list[MIDIAnnotation]):
         Returns:
             Self: 指定した秒数にあるアノテーション
         """
-        return MIDIAnnotations(
-            filter(lambda x: x[kind] >= sec_start and x[kind] < sec_end, self)
-        )
+        return self.filter(lambda x: x[kind] >= sec_start and x[kind] < sec_end)
 
     def to_frames(
         self,
